@@ -15,10 +15,12 @@ Open `http://localhost:3000`.
 
 ## Deploy on Vercel
 
-Create a PostgreSQL database from Vercel Storage, Neon, Supabase, or another hosted provider, then add its connection string to your Vercel environment variables:
+Create a PostgreSQL database from Vercel Storage, Neon, Supabase, or another hosted provider, then add its connection string to your Vercel environment variables. The app checks these names:
 
 ```bash
 POSTGRES_URL=postgres://...
+# or
+DATABASE_URL=postgres://...
 ```
 
 After redeploying, `/api/tasks` will create the `tasks` table and seed starter tasks automatically.

@@ -19,10 +19,10 @@ let client: ReturnType<typeof postgres> | null = null;
 let isReady = false;
 
 function getSql() {
-  const connectionString = process.env.POSTGRES_URL;
+  const connectionString = process.env.POSTGRES_URL ?? process.env.DATABASE_URL ?? process.env.POSTGRES_PRISMA_URL;
 
   if (!connectionString) {
-    throw new Error("POSTGRES_URL is not configured.");
+    throw new Error("PostgreSQL is not configured. Add POSTGRES_URL or DATABASE_URL in your Vercel environment variables.");
   }
 
   if (!client) {
