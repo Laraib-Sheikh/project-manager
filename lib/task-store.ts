@@ -70,9 +70,14 @@ export function listTasks(userId: string): Task[] {
   return rows.map(rowToTask);
 }
 
-export function createTask(userId: string, input: Partial<TaskInput>, allowedProjects: string[]): Task {
+export function createTask(
+  userId: string,
+  input: Partial<TaskInput>,
+  allowedProjects: string[],
+  allowedAssignees?: string[]
+): Task {
   const task = {
-    ...normalizeTaskInput(input, allowedProjects),
+    ...normalizeTaskInput(input, allowedProjects, allowedAssignees),
     id: `task-${crypto.randomUUID()}`,
     createdAt: new Date().toISOString()
   } satisfies Task;
@@ -104,7 +109,13 @@ export function createTask(userId: string, input: Partial<TaskInput>, allowedPro
   return task;
 }
 
-export function updateTask(userId: string, id: string, input: Partial<TaskInput>, allowedProjects: string[]): Task | null {
+export function updateTask(
+  userId: string,
+  id: string,
+  input: Partial<TaskInput>,
+  allowedProjects: string[],
+  allowedAssignees?: string[]
+): Task | null {
   const existing = getTaskForUser(userId, id);
 
   if (!existing) {
@@ -113,7 +124,7 @@ export function updateTask(userId: string, id: string, input: Partial<TaskInput>
 
   const task = {
     ...existing,
-    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects),
+    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects, allowedAssignees),
     id,
     createdAt: existing.createdAt
   } satisfies Task;

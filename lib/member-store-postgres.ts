@@ -3,6 +3,7 @@ import {
   INVITATION_EXPIRY_DAYS,
   MemberRole,
   PendingInvitationView,
+  ProjectCollaborator,
   ProjectInvitation,
   TeamMemberView
 } from "./member-data";
@@ -252,6 +253,27 @@ export async function revokePostgresInvitation(id: string, userId: string) {
   }
 
   await getSql()`UPDATE project_invitations SET status = 'revoked' WHERE id = ${id}`;
+}
+
+export async function listPostgresProjectCollaborators(projectId: string): Promise<ProjectCollaborator[]> {
+  await ensureReady();
+
+  const rows = await getSql()<
+    { user_id: string; name: string; email: string; role: string }[]
+  >`
+    SELECT pm.user_id, u.name, u.email, pm.role
+    FROM project_members pm
+    INNER JOIN app_users u ON u.id = pm.user_id
+    WHERE pm.project_id = ${projectId}
+    ORDER BY pm.joined_at ASC
+  `;
+
+  return rows.map((row) => ({
+    userId: row.user_id,
+    name: row.name,
+    email: row.email,
+    role: row.role as MemberRole
+  }));
 }
 
 export async function listPostgresTeamForUser(userId: string) {

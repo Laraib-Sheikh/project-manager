@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { assignees, priorities, Priority, statuses, Status, Task } from "../lib/task-data";
+import { getCollaboratorLabels } from "../lib/collaborator-labels";
+import { priorities, Priority, statuses, Status, Task } from "../lib/task-data";
+import { ProjectCollaborator } from "../lib/member-data";
 import { Project } from "../lib/project-data";
 import { getAuthHeaders, sessionKey, SessionUser } from "../lib/session";
 
 type ViewMode = "board" | "list";
 
-function createEmptyDraft(projectName = "") {
+function createEmptyDraft(projectName = "", assignee = "") {
   return {
     title: "",
     description: "",
-    assignee: assignees[0],
+    assignee,
     dueDate: "",
     priority: "Normal" as Priority,
     status: "To Do" as Status,
@@ -34,6 +36,8 @@ export default function Home() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [userProjects, setUserProjects] = useState<Project[]>([]);
+  const [projectCollaborators, setProjectCollaborators] = useState<ProjectCollaborator[]>([]);
+  const [isLoadingCollaborators, setIsLoadingCollaborators] = useState(false);
   const [draft, setDraft] = useState(createEmptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -75,6 +79,73 @@ export default function Home() {
 
   const projectNames = useMemo(() => userProjects.map((project) => project.name), [userProjects]);
 
+  const draftProject = useMemo(
+    () => userProjects.find((project) => project.name === draft.project),
+    [draft.project, userProjects]
+  );
+
+  const projectAssignees = useMemo(() => {
+    const labels = getCollaboratorLabels(projectCollaborators);
+
+    if (draft.assignee && !labels.includes(draft.assignee)) {
+      return [draft.assignee, ...labels];
+    }
+
+    return labels;
+  }, [draft.assignee, projectCollaborators]);
+
+  const assigneeFilterOptions = useMemo(() => {
+    const names = new Set<string>();
+
+    tasks.forEach((task) => {
+      if (task.assignee) {
+        names.add(task.assignee);
+      }
+    });
+
+    getCollaboratorLabels(projectCollaborators).forEach((label) => names.add(label));
+
+    return [...names].sort();
+  }, [projectCollaborators, tasks]);
+
+  async function loadProjectCollaborators(projectId: string | undefined, user: SessionUser) {
+    if (!projectId) {
+      setProjectCollaborators([]);
+      return [];
+    }
+
+    setIsLoadingCollaborators(true);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/members`, {
+        headers: getAuthHeaders(user)
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to load project collaborators.");
+      }
+
+      const data = (await response.json()) as { collaborators: ProjectCollaborator[] };
+      const collaborators = data.collaborators ?? [];
+      setProjectCollaborators(collaborators);
+      return collaborators;
+    } catch (error) {
+      setProjectCollaborators([]);
+      setErrorMessage(getErrorMessage(error));
+      return [];
+    } finally {
+      setIsLoadingCollaborators(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!currentUser || !draftProject?.id) {
+      return;
+    }
+
+    void loadProjectCollaborators(draftProject.id, currentUser);
+  }, [currentUser, draftProject?.id]);
+
   async function initializeWorkspace(user: SessionUser) {
     setIsLoading(true);
     setErrorMessage("");
@@ -95,8 +166,14 @@ export default function Home() {
         return;
       }
 
+      const firstProject = projectsData.projects[0];
+
       setUserProjects(projectsData.projects);
-      setDraft(createEmptyDraft(projectsData.projects[0]?.name ?? ""));
+
+      const collaborators = await loadProjectCollaborators(firstProject?.id, user);
+      const firstAssignee = getCollaboratorLabels(collaborators)[0] ?? "";
+
+      setDraft(createEmptyDraft(firstProject?.name ?? "", firstAssignee));
       await loadTasks(user);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -216,7 +293,7 @@ export default function Home() {
 
         return [data.task, ...current];
       });
-      setDraft(createEmptyDraft(projectNames[0] ?? ""));
+      await resetDraftToFirstProject(currentUser);
       setEditingId(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -291,12 +368,32 @@ export default function Home() {
 
       if (editingId === taskId) {
         setEditingId(null);
-        setDraft(createEmptyDraft(projectNames[0] ?? ""));
+        await resetDraftToFirstProject(currentUser);
       }
     } catch (error) {
       setTasks(previousTasks);
       setErrorMessage(getErrorMessage(error));
     }
+  }
+
+  async function resetDraftToFirstProject(user: SessionUser) {
+    const firstProject = userProjects[0];
+    const collaborators = await loadProjectCollaborators(firstProject?.id, user);
+    const firstAssignee = getCollaboratorLabels(collaborators)[0] ?? "";
+    setDraft(createEmptyDraft(firstProject?.name ?? "", firstAssignee));
+  }
+
+  async function handleProjectChange(projectName: string) {
+    if (!currentUser) {
+      return;
+    }
+
+    const project = userProjects.find((entry) => entry.name === projectName);
+    const collaborators = await loadProjectCollaborators(project?.id, currentUser);
+    const labels = getCollaboratorLabels(collaborators);
+    const nextAssignee = labels.includes(draft.assignee) ? draft.assignee : (labels[0] ?? "");
+
+    setDraft({ ...draft, project: projectName, assignee: nextAssignee });
   }
 
   if (isCheckingAuth || !currentUser) {
@@ -372,7 +469,16 @@ export default function Home() {
                 <h2>{editingId ? "Update task details" : "Add work to the plan"}</h2>
               </div>
               {editingId && (
-                <button className="ghostButton" onClick={() => { setEditingId(null); setDraft(createEmptyDraft(projectNames[0] ?? "")); }} type="button">
+                <button
+                  className="ghostButton"
+                  onClick={() => {
+                    setEditingId(null);
+                    if (currentUser) {
+                      void resetDraftToFirstProject(currentUser);
+                    }
+                  }}
+                  type="button"
+                >
                   Cancel
                 </button>
               )}
@@ -396,11 +502,31 @@ export default function Home() {
                 />
               </label>
               <label className="field">
-                Assignee
-                <select onChange={(event) => setDraft({ ...draft, assignee: event.target.value })} value={draft.assignee}>
-                  {assignees.map((assignee) => (
-                    <option key={assignee}>{assignee}</option>
+                Project
+                <select onChange={(event) => void handleProjectChange(event.target.value)} value={draft.project}>
+                  {projectNames.map((project) => (
+                    <option key={project}>{project}</option>
                   ))}
+                </select>
+              </label>
+              <label className="field">
+                Assignee
+                <select
+                  disabled={isLoadingCollaborators || projectAssignees.length === 0}
+                  onChange={(event) => setDraft({ ...draft, assignee: event.target.value })}
+                  value={draft.assignee}
+                >
+                  {isLoadingCollaborators ? (
+                    <option value="">Loading collaborators...</option>
+                  ) : projectAssignees.length === 0 ? (
+                    <option value="">No collaborators on this project</option>
+                  ) : (
+                    projectAssignees.map((assignee) => (
+                      <option key={assignee} value={assignee}>
+                        {assignee}
+                      </option>
+                    ))
+                  )}
                 </select>
               </label>
               <label className="field">
@@ -420,14 +546,6 @@ export default function Home() {
                 <select onChange={(event) => setDraft({ ...draft, status: event.target.value as Status })} value={draft.status}>
                   {statuses.map((status) => (
                     <option key={status}>{status}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                Project
-                <select onChange={(event) => setDraft({ ...draft, project: event.target.value })} value={draft.project}>
-                  {projectNames.map((project) => (
-                    <option key={project}>{project}</option>
                   ))}
                 </select>
               </label>
@@ -471,7 +589,7 @@ export default function Home() {
           </select>
           <select onChange={(event) => setAssigneeFilter(event.target.value)} value={assigneeFilter}>
             <option>All</option>
-            {assignees.map((assignee) => (
+            {assigneeFilterOptions.map((assignee) => (
               <option key={assignee}>{assignee}</option>
             ))}
           </select>

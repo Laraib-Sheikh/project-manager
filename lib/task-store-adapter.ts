@@ -1,4 +1,6 @@
+import { getCollaboratorLabels } from "./collaborator-labels";
 import { TaskInput } from "./task-data";
+import { ensureOwnerMembership, listProjectCollaborators } from "./member-store-adapter";
 import { listProjects } from "./project-store-adapter";
 import {
   createPostgresTask,
@@ -26,6 +28,19 @@ async function getAllowedProjects(userId: string) {
   return projects.map((project) => project.name);
 }
 
+async function getAllowedAssignees(userId: string, projectName: string) {
+  const projects = await listProjects(userId);
+  const project = projects.find((entry) => entry.name === projectName);
+
+  if (!project) {
+    return [];
+  }
+
+  await ensureOwnerMembership(project.id, project.userId);
+  const collaborators = await listProjectCollaborators(project.id);
+  return getCollaboratorLabels(collaborators);
+}
+
 export async function listTasks(userId: string) {
   if (shouldUsePostgres()) {
     return listPostgresTasks(userId);
@@ -46,8 +61,11 @@ export async function createTask(userId: string, input: Partial<TaskInput>) {
     throw new Error("Create a project before adding tasks.");
   }
 
+  const projectName = String(input.project ?? allowedProjects[0]);
+  const allowedAssignees = await getAllowedAssignees(userId, projectName);
+
   if (shouldUsePostgres()) {
-    return createPostgresTask(userId, input, allowedProjects);
+    return createPostgresTask(userId, input, allowedProjects, allowedAssignees);
   }
 
   if (!shouldUseSqlite()) {
@@ -55,14 +73,22 @@ export async function createTask(userId: string, input: Partial<TaskInput>) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.createTask(userId, input, allowedProjects);
+  return sqliteTaskStore.createTask(userId, input, allowedProjects, allowedAssignees);
 }
 
 export async function updateTask(userId: string, id: string, input: Partial<TaskInput>) {
   const allowedProjects = await getAllowedProjects(userId);
+  let projectName = String(input.project ?? "");
+
+  if (!projectName) {
+    const tasks = await listTasks(userId);
+    projectName = tasks.find((task) => task.id === id)?.project ?? "";
+  }
+
+  const allowedAssignees = projectName ? await getAllowedAssignees(userId, projectName) : [];
 
   if (shouldUsePostgres()) {
-    return updatePostgresTask(userId, id, input, allowedProjects);
+    return updatePostgresTask(userId, id, input, allowedProjects, allowedAssignees);
   }
 
   if (!shouldUseSqlite()) {
@@ -70,7 +96,7 @@ export async function updateTask(userId: string, id: string, input: Partial<Task
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.updateTask(userId, id, input, allowedProjects);
+  return sqliteTaskStore.updateTask(userId, id, input, allowedProjects, allowedAssignees);
 }
 
 export async function deleteTask(userId: string, id: string) {

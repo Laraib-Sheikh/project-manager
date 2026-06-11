@@ -6,6 +6,7 @@ import {
   getPostgresInvitationByToken,
   isPostgresProjectOwner,
   listPostgresMemberProjectIds,
+  listPostgresProjectCollaborators,
   listPostgresTeamForUser,
   revokePostgresInvitation
 } from "./member-store-postgres";
@@ -131,4 +132,17 @@ export async function listTeamForUser(userId: string) {
 
   const { sqliteMemberStore } = await import("./member-store");
   return sqliteMemberStore.listTeamForUser(userId);
+}
+
+export async function listProjectCollaborators(projectId: string) {
+  if (shouldUsePostgres()) {
+    return listPostgresProjectCollaborators(projectId);
+  }
+
+  if (!shouldUseSqlite()) {
+    throw getMissingDatabaseError();
+  }
+
+  const { sqliteMemberStore } = await import("./member-store");
+  return sqliteMemberStore.listProjectCollaborators(projectId);
 }

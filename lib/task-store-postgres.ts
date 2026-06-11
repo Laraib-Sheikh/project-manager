@@ -84,12 +84,13 @@ export async function listPostgresTasks(userId: string): Promise<Task[]> {
 export async function createPostgresTask(
   userId: string,
   input: Partial<TaskInput>,
-  allowedProjects: string[]
+  allowedProjects: string[],
+  allowedAssignees?: string[]
 ): Promise<Task> {
   await ensureReady();
 
   const task = {
-    ...normalizeTaskInput(input, allowedProjects),
+    ...normalizeTaskInput(input, allowedProjects, allowedAssignees),
     id: `task-${crypto.randomUUID()}`,
     createdAt: new Date().toISOString()
   } satisfies Task;
@@ -123,7 +124,8 @@ export async function updatePostgresTask(
   userId: string,
   id: string,
   input: Partial<TaskInput>,
-  allowedProjects: string[]
+  allowedProjects: string[],
+  allowedAssignees?: string[]
 ): Promise<Task | null> {
   await ensureReady();
 
@@ -138,7 +140,7 @@ export async function updatePostgresTask(
 
   const task = {
     ...existing,
-    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects),
+    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects, allowedAssignees),
     id,
     createdAt: existing.createdAt
   } satisfies Task;

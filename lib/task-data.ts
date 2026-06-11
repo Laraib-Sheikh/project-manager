@@ -22,7 +22,6 @@ export type TaskInput = Omit<Task, "id" | "createdAt"> & {
 
 export const statuses: Status[] = ["Backlog", "To Do", "In Progress", "Review", "Done"];
 export const priorities: Priority[] = ["Urgent", "High", "Normal", "Low"];
-export const assignees = ["Laraib Ahmad", "Dawood Murshed", "Taimoor Ahmad"];
 export const defaultProjects = ["Website Redesign", "Mobile App", "Marketing Launch", "Operations"];
 
 export const starterTasks: Task[] = [
@@ -80,13 +79,24 @@ export const starterTasks: Task[] = [
   }
 ];
 
-export function normalizeTaskInput(input: Partial<TaskInput>, allowedProjects: string[] = defaultProjects): TaskInput {
+export function normalizeTaskInput(
+  input: Partial<TaskInput>,
+  allowedProjects: string[] = defaultProjects,
+  allowedAssignees?: string[]
+): TaskInput {
   const projectOptions = allowedProjects.length > 0 ? allowedProjects : defaultProjects;
+  const assigneeValue = String(input.assignee ?? "").trim();
+  const assignee =
+    allowedAssignees && allowedAssignees.length > 0
+      ? allowedAssignees.includes(assigneeValue)
+        ? assigneeValue
+        : allowedAssignees[0]
+      : assigneeValue;
 
   return {
     title: String(input.title ?? "").trim(),
     description: String(input.description ?? "").trim(),
-    assignee: assignees.includes(String(input.assignee)) ? String(input.assignee) : assignees[0],
+    assignee,
     dueDate: String(input.dueDate ?? ""),
     priority: priorities.includes(input.priority as Priority) ? (input.priority as Priority) : "Normal",
     status: statuses.includes(input.status as Status) ? (input.status as Status) : "To Do",

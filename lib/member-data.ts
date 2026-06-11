@@ -31,6 +31,13 @@ export type TeamMemberView = {
   joinedAt: string;
 };
 
+export type ProjectCollaborator = {
+  userId: string;
+  name: string;
+  email: string;
+  role: MemberRole;
+};
+
 export type PendingInvitationView = {
   id: string;
   email: string;

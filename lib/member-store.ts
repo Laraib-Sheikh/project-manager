@@ -5,6 +5,7 @@ import {
   INVITATION_EXPIRY_DAYS,
   MemberRole,
   PendingInvitationView,
+  ProjectCollaborator,
   ProjectInvitation,
   ProjectMember,
   TeamMemberView
@@ -253,6 +254,25 @@ export function revokeInvitation(id: string, userId: string) {
   getDb().prepare("UPDATE project_invitations SET status = 'revoked' WHERE id = ?").run(id);
 }
 
+export function listProjectCollaborators(projectId: string): ProjectCollaborator[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT pm.user_id, u.name, u.email, pm.role
+       FROM project_members pm
+       INNER JOIN app_users u ON u.id = pm.user_id
+       WHERE pm.project_id = ?
+       ORDER BY pm.joined_at ASC`
+    )
+    .all(projectId) as { user_id: string; name: string; email: string; role: string }[];
+
+  return rows.map((row) => ({
+    userId: row.user_id,
+    name: row.name,
+    email: row.email,
+    role: row.role as MemberRole
+  }));
+}
+
 export function listTeamForUser(userId: string): { members: TeamMemberView[]; pending: PendingInvitationView[] } {
   const ownedOrMemberProjectIds = listMemberProjectIds(userId);
   const ownedProjects = getDb()
@@ -344,6 +364,7 @@ export const sqliteMemberStore = {
   isProjectMember,
   isProjectOwner,
   listMemberProjectIds,
+  listProjectCollaborators,
   createInvitation,
   getInvitationByToken,
   acceptInvitation,
