@@ -42,8 +42,10 @@ async function getAllowedAssignees(userId: string, projectName: string) {
 }
 
 export async function listTasks(userId: string) {
+  const allowedProjects = await getAllowedProjects(userId);
+
   if (shouldUsePostgres()) {
-    return listPostgresTasks(userId);
+    return listPostgresTasks(allowedProjects);
   }
 
   if (!shouldUseSqlite()) {
@@ -51,7 +53,7 @@ export async function listTasks(userId: string) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.listTasks(userId);
+  return sqliteTaskStore.listTasks(allowedProjects);
 }
 
 export async function createTask(userId: string, input: Partial<TaskInput>) {
@@ -100,8 +102,10 @@ export async function updateTask(userId: string, id: string, input: Partial<Task
 }
 
 export async function deleteTask(userId: string, id: string) {
+  const allowedProjects = await getAllowedProjects(userId);
+
   if (shouldUsePostgres()) {
-    return deletePostgresTask(userId, id);
+    return deletePostgresTask(id, allowedProjects);
   }
 
   if (!shouldUseSqlite()) {
@@ -109,5 +113,5 @@ export async function deleteTask(userId: string, id: string) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.deleteTask(userId, id);
+  return sqliteTaskStore.deleteTask(id, allowedProjects);
 }

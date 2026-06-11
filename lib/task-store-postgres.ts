@@ -71,11 +71,17 @@ async function ensureReady() {
   isReady = true;
 }
 
-export async function listPostgresTasks(userId: string): Promise<Task[]> {
+export async function listPostgresTasks(allowedProjects: string[]): Promise<Task[]> {
   await ensureReady();
 
+  if (allowedProjects.length === 0) {
+    return [];
+  }
+
   const rows = await getSql()<PostgresTaskRow[]>`
-    SELECT * FROM tasks WHERE user_id = ${userId} ORDER BY created_at DESC
+    SELECT * FROM tasks
+    WHERE project = ANY(${allowedProjects})
+    ORDER BY created_at DESC
   `;
 
   return rows.map(rowToTask);
@@ -129,8 +135,14 @@ export async function updatePostgresTask(
 ): Promise<Task | null> {
   await ensureReady();
 
+  if (allowedProjects.length === 0) {
+    return null;
+  }
+
   const existingRows = await getSql()<PostgresTaskRow[]>`
-    SELECT * FROM tasks WHERE id = ${id} AND user_id = ${userId} LIMIT 1
+    SELECT * FROM tasks
+    WHERE id = ${id} AND project = ANY(${allowedProjects})
+    LIMIT 1
   `;
   const existing = existingRows[0] ? rowToTask(existingRows[0]) : null;
 
@@ -161,17 +173,23 @@ export async function updatePostgresTask(
       project = ${task.project},
       tags = ${getSql().json(task.tags)},
       estimate = ${task.estimate}
-    WHERE id = ${id} AND user_id = ${userId}
+    WHERE id = ${id} AND project = ANY(${allowedProjects})
   `;
 
   return task;
 }
 
-export async function deletePostgresTask(userId: string, id: string): Promise<boolean> {
+export async function deletePostgresTask(id: string, allowedProjects: string[]): Promise<boolean> {
   await ensureReady();
 
+  if (allowedProjects.length === 0) {
+    return false;
+  }
+
   const rows = await getSql()<PostgresTaskRow[]>`
-    DELETE FROM tasks WHERE id = ${id} AND user_id = ${userId} RETURNING *
+    DELETE FROM tasks
+    WHERE id = ${id} AND project = ANY(${allowedProjects})
+    RETURNING *
   `;
 
   return rows.length > 0;

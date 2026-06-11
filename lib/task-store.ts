@@ -62,10 +62,15 @@ function migrateTasksTable(db: DatabaseSync) {
   }
 }
 
-export function listTasks(userId: string): Task[] {
+export function listTasks(allowedProjects: string[]): Task[] {
+  if (allowedProjects.length === 0) {
+    return [];
+  }
+
+  const placeholders = allowedProjects.map(() => "?").join(", ");
   const rows = getDb()
-    .prepare("SELECT * FROM tasks WHERE user_id = ? ORDER BY datetime(created_at) DESC")
-    .all(userId) as TaskRow[];
+    .prepare(`SELECT * FROM tasks WHERE project IN (${placeholders}) ORDER BY datetime(created_at) DESC`)
+    .all(...allowedProjects) as TaskRow[];
 
   return rows.map(rowToTask);
 }
@@ -116,7 +121,7 @@ export function updateTask(
   allowedProjects: string[],
   allowedAssignees?: string[]
 ): Task | null {
-  const existing = getTaskForUser(userId, id);
+  const existing = getTaskForProjects(id, allowedProjects);
 
   if (!existing) {
     return null;
@@ -133,11 +138,13 @@ export function updateTask(
     throw new Error("Task title is required.");
   }
 
+  const placeholders = allowedProjects.map(() => "?").join(", ");
+
   getDb()
     .prepare(
       `UPDATE tasks
        SET title = ?, description = ?, assignee = ?, due_date = ?, priority = ?, status = ?, project = ?, tags = ?, estimate = ?
-       WHERE id = ? AND user_id = ?`
+       WHERE id = ? AND project IN (${placeholders})`
     )
     .run(
       task.title,
@@ -150,19 +157,35 @@ export function updateTask(
       JSON.stringify(task.tags),
       task.estimate,
       id,
-      userId
+      ...allowedProjects
     );
 
   return task;
 }
 
-export function deleteTask(userId: string, id: string): boolean {
-  const result = getDb().prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?").run(id, userId);
+export function deleteTask(id: string, allowedProjects: string[]): boolean {
+  if (allowedProjects.length === 0) {
+    return false;
+  }
+
+  const placeholders = allowedProjects.map(() => "?").join(", ");
+  const result = getDb()
+    .prepare(`DELETE FROM tasks WHERE id = ? AND project IN (${placeholders})`)
+    .run(id, ...allowedProjects);
+
   return result.changes > 0;
 }
 
-function getTaskForUser(userId: string, id: string): Task | null {
-  const row = getDb().prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?").get(id, userId) as TaskRow | undefined;
+function getTaskForProjects(id: string, allowedProjects: string[]): Task | null {
+  if (allowedProjects.length === 0) {
+    return null;
+  }
+
+  const placeholders = allowedProjects.map(() => "?").join(", ");
+  const row = getDb()
+    .prepare(`SELECT * FROM tasks WHERE id = ? AND project IN (${placeholders})`)
+    .get(id, ...allowedProjects) as TaskRow | undefined;
+
   return row ? rowToTask(row) : null;
 }
 
