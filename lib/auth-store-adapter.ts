@@ -65,3 +65,33 @@ export async function authenticateUser(input: LoginInput) {
   const { sqliteAuthStore } = await import("./auth-store");
   return sqliteAuthStore.loginUser(userInput);
 }
+
+export async function getUserById(userId: string) {
+  if (shouldUsePostgres()) {
+    const { getPostgresUserById } = await import("./auth-store-postgres");
+    return getPostgresUserById(userId);
+  }
+
+  if (!shouldUseSqlite()) {
+    throw getMissingDatabaseError();
+  }
+
+  const { sqliteAuthStore } = await import("./auth-store");
+  return sqliteAuthStore.getUserById(userId);
+}
+
+export async function getUserByEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (shouldUsePostgres()) {
+    const { getPostgresUserByEmail } = await import("./auth-store-postgres");
+    return getPostgresUserByEmail(normalizedEmail);
+  }
+
+  if (!shouldUseSqlite()) {
+    throw getMissingDatabaseError();
+  }
+
+  const { sqliteAuthStore } = await import("./auth-store");
+  return sqliteAuthStore.getUserByEmail(normalizedEmail);
+}

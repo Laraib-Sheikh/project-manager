@@ -64,6 +64,22 @@ export function loginUser(input: { email: string; password: string }): AuthUser 
   return rowToUser(row);
 }
 
+export function getUserById(userId: string): AuthUser | null {
+  const row = getDb().prepare("SELECT id, email, name, created_at FROM app_users WHERE id = ?").get(userId) as
+    | Omit<UserRow, "password_hash">
+    | undefined;
+
+  return row ? rowToUser(row as UserRow) : null;
+}
+
+export function getUserByEmail(email: string): AuthUser | null {
+  const row = getDb().prepare("SELECT id, email, name, created_at FROM app_users WHERE email = ?").get(email) as
+    | Omit<UserRow, "password_hash">
+    | undefined;
+
+  return row ? rowToUser(row as UserRow) : null;
+}
+
 function rowToUser(row: UserRow): AuthUser {
   return {
     id: row.id,
@@ -75,5 +91,7 @@ function rowToUser(row: UserRow): AuthUser {
 
 export const sqliteAuthStore = {
   createUser,
-  loginUser
+  loginUser,
+  getUserById,
+  getUserByEmail
 };

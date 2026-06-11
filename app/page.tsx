@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { assignees, priorities, Priority, statuses, Status, Task } from "../lib/task-data";
@@ -321,7 +322,7 @@ export default function Home() {
           <a className="active" href="#tasks">Tasks</a>
           <a href="#board">Board</a>
           <a href="#insights">Insights</a>
-          <a href="#team">Team</a>
+          <Link href="/team">Team</Link>
         </nav>
 
         <div className="userPanel">

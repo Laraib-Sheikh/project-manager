@@ -40,3 +40,17 @@ export async function createProject(userId: string, input: ProjectInput) {
   const { sqliteProjectStore } = await import("./project-store");
   return sqliteProjectStore.createProject(userId, input);
 }
+
+export async function getProjectById(projectId: string) {
+  if (shouldUsePostgres()) {
+    const { getPostgresProjectById } = await import("./project-store-postgres");
+    return getPostgresProjectById(projectId);
+  }
+
+  if (!shouldUseSqlite()) {
+    throw getMissingDatabaseError();
+  }
+
+  const { sqliteProjectStore } = await import("./project-store");
+  return sqliteProjectStore.getProjectById(projectId);
+}

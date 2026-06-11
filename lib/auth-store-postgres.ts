@@ -80,6 +80,26 @@ export async function loginPostgresUser(input: { email: string; password: string
   return rowToUser(row);
 }
 
+export async function getPostgresUserById(userId: string): Promise<AuthUser | null> {
+  await ensureReady();
+
+  const rows = await getSql()<PostgresUserRow[]>`
+    SELECT id, email, name, created_at FROM app_users WHERE id = ${userId} LIMIT 1
+  `;
+
+  return rows[0] ? rowToUser(rows[0]) : null;
+}
+
+export async function getPostgresUserByEmail(email: string): Promise<AuthUser | null> {
+  await ensureReady();
+
+  const rows = await getSql()<PostgresUserRow[]>`
+    SELECT id, email, name, created_at FROM app_users WHERE email = ${email} LIMIT 1
+  `;
+
+  return rows[0] ? rowToUser(rows[0]) : null;
+}
+
 function rowToUser(row: PostgresUserRow): AuthUser {
   return {
     id: row.id,

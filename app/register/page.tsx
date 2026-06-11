@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { sessionKey } from "../../lib/session";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getAuthHeaders, sessionKey, SessionUser } from "../../lib/session";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("invite") ?? "";
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,8 +39,18 @@ export default function RegisterPage() {
         throw new Error(await readApiError(response));
       }
 
-      const data = (await response.json()) as { user: { id: string; email: string; name: string } };
+      const data = (await response.json()) as { user: SessionUser };
       window.localStorage.setItem(sessionKey, JSON.stringify(data.user));
+
+      if (inviteToken) {
+        const accepted = await acceptInvite(inviteToken, data.user);
+
+        if (accepted) {
+          router.replace("/");
+          return;
+        }
+      }
+
       router.replace("/onboard");
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -106,7 +118,10 @@ export default function RegisterPage() {
         </form>
 
         <p className="authSwitch">
-          Already have an account? <Link href="/login">Log in</Link>
+          Already have an account?{" "}
+          <Link href={inviteToken ? `/login?invite=${encodeURIComponent(inviteToken)}&email=${encodeURIComponent(email)}` : "/login"}>
+            Log in
+          </Link>
         </p>
       </section>
     </main>
@@ -124,4 +139,18 @@ async function readApiError(response: Response) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+async function acceptInvite(token: string, user: SessionUser) {
+  try {
+    const response = await fetch("/api/invitations/accept", {
+      method: "POST",
+      headers: getAuthHeaders(user),
+      body: JSON.stringify({ token })
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
 }

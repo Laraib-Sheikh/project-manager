@@ -1,9 +1,12 @@
+export type ProjectRole = "owner" | "member" | "viewer";
+
 export type Project = {
   id: string;
   name: string;
   description: string;
   userId: string;
   createdAt: string;
+  role?: ProjectRole;
 };
 
 export type ProjectInput = {
