@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-const sessionKey = "orbit-pm-session";
+import { getAuthHeaders, sessionKey, SessionUser } from "../../lib/session";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,8 +36,22 @@ export default function LoginPage() {
         throw new Error(await readApiError(response));
       }
 
-      const data = (await response.json()) as { user: { email: string; name: string } };
+      const data = (await response.json()) as { user: SessionUser };
       window.localStorage.setItem(sessionKey, JSON.stringify(data.user));
+
+      const projectsResponse = await fetch("/api/projects", {
+        headers: getAuthHeaders(data.user)
+      });
+
+      if (projectsResponse.ok) {
+        const projectsData = (await projectsResponse.json()) as { projects: { id: string }[] };
+
+        if (projectsData.projects.length === 0) {
+          router.replace("/onboard");
+          return;
+        }
+      }
+
       router.replace("/");
     } catch (error) {
       setMessage(getErrorMessage(error));

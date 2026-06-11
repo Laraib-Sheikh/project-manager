@@ -1,4 +1,5 @@
 import { TaskInput } from "./task-data";
+import { listProjects } from "./project-store-adapter";
 import {
   createPostgresTask,
   deletePostgresTask,
@@ -20,22 +21,14 @@ function getMissingDatabaseError() {
   );
 }
 
-export async function listTasks() {
-  if (shouldUsePostgres()) {
-    return listPostgresTasks();
-  }
-
-  if (!shouldUseSqlite()) {
-    throw getMissingDatabaseError();
-  }
-
-  const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.listTasks();
+async function getAllowedProjects(userId: string) {
+  const projects = await listProjects(userId);
+  return projects.map((project) => project.name);
 }
 
-export async function createTask(input: Partial<TaskInput>) {
+export async function listTasks(userId: string) {
   if (shouldUsePostgres()) {
-    return createPostgresTask(input);
+    return listPostgresTasks(userId);
   }
 
   if (!shouldUseSqlite()) {
@@ -43,12 +36,18 @@ export async function createTask(input: Partial<TaskInput>) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.createTask(input);
+  return sqliteTaskStore.listTasks(userId);
 }
 
-export async function updateTask(id: string, input: Partial<TaskInput>) {
+export async function createTask(userId: string, input: Partial<TaskInput>) {
+  const allowedProjects = await getAllowedProjects(userId);
+
+  if (allowedProjects.length === 0) {
+    throw new Error("Create a project before adding tasks.");
+  }
+
   if (shouldUsePostgres()) {
-    return updatePostgresTask(id, input);
+    return createPostgresTask(userId, input, allowedProjects);
   }
 
   if (!shouldUseSqlite()) {
@@ -56,12 +55,14 @@ export async function updateTask(id: string, input: Partial<TaskInput>) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.updateTask(id, input);
+  return sqliteTaskStore.createTask(userId, input, allowedProjects);
 }
 
-export async function deleteTask(id: string) {
+export async function updateTask(userId: string, id: string, input: Partial<TaskInput>) {
+  const allowedProjects = await getAllowedProjects(userId);
+
   if (shouldUsePostgres()) {
-    return deletePostgresTask(id);
+    return updatePostgresTask(userId, id, input, allowedProjects);
   }
 
   if (!shouldUseSqlite()) {
@@ -69,5 +70,18 @@ export async function deleteTask(id: string) {
   }
 
   const { sqliteTaskStore } = await import("./task-store");
-  return sqliteTaskStore.deleteTask(id);
+  return sqliteTaskStore.updateTask(userId, id, input, allowedProjects);
+}
+
+export async function deleteTask(userId: string, id: string) {
+  if (shouldUsePostgres()) {
+    return deletePostgresTask(userId, id);
+  }
+
+  if (!shouldUseSqlite()) {
+    throw getMissingDatabaseError();
+  }
+
+  const { sqliteTaskStore } = await import("./task-store");
+  return sqliteTaskStore.deleteTask(userId, id);
 }

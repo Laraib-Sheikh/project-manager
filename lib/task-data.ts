@@ -23,7 +23,7 @@ export type TaskInput = Omit<Task, "id" | "createdAt"> & {
 export const statuses: Status[] = ["Backlog", "To Do", "In Progress", "Review", "Done"];
 export const priorities: Priority[] = ["Urgent", "High", "Normal", "Low"];
 export const assignees = ["Laraib Ahmad", "Dawood Murshed", "Taimoor Ahmad"];
-export const projects = ["Website Redesign", "Mobile App", "Marketing Launch", "Operations"];
+export const defaultProjects = ["Website Redesign", "Mobile App", "Marketing Launch", "Operations"];
 
 export const starterTasks: Task[] = [
   {
@@ -80,7 +80,9 @@ export const starterTasks: Task[] = [
   }
 ];
 
-export function normalizeTaskInput(input: Partial<TaskInput>): TaskInput {
+export function normalizeTaskInput(input: Partial<TaskInput>, allowedProjects: string[] = defaultProjects): TaskInput {
+  const projectOptions = allowedProjects.length > 0 ? allowedProjects : defaultProjects;
+
   return {
     title: String(input.title ?? "").trim(),
     description: String(input.description ?? "").trim(),
@@ -88,7 +90,7 @@ export function normalizeTaskInput(input: Partial<TaskInput>): TaskInput {
     dueDate: String(input.dueDate ?? ""),
     priority: priorities.includes(input.priority as Priority) ? (input.priority as Priority) : "Normal",
     status: statuses.includes(input.status as Status) ? (input.status as Status) : "To Do",
-    project: projects.includes(String(input.project)) ? String(input.project) : projects[0],
+    project: projectOptions.includes(String(input.project)) ? String(input.project) : projectOptions[0],
     tags: Array.isArray(input.tags) ? input.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
     estimate: Math.max(1, Number(input.estimate) || 1),
     id: input.id,

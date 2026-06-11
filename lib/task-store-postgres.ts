@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { normalizeTaskInput, starterTasks, Task, TaskInput } from "./task-data";
+import { normalizeTaskInput, Task, TaskInput } from "./task-data";
 
 type PostgresTaskRow = {
   id: string;
@@ -13,6 +13,7 @@ type PostgresTaskRow = {
   tags: string[] | string;
   estimate: number;
   created_at: string | Date;
+  user_id: string | null;
 };
 
 let client: ReturnType<typeof postgres> | null = null;
@@ -54,52 +55,41 @@ async function ensureReady() {
       project TEXT NOT NULL,
       tags JSONB NOT NULL DEFAULT '[]'::jsonb,
       estimate INTEGER NOT NULL DEFAULT 1,
-      created_at TIMESTAMPTZ NOT NULL
+      created_at TIMESTAMPTZ NOT NULL,
+      user_id TEXT
     )
   `;
 
-  const rows = await sql<{ count: string }[]>`SELECT COUNT(*)::text as count FROM tasks`;
+  await sql`
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS user_id TEXT
+  `;
 
-  if (Number(rows[0]?.count ?? 0) === 0) {
-    for (const task of starterTasks) {
-      await sql`
-        INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at)
-        VALUES (
-          ${task.id},
-          ${task.title},
-          ${task.description},
-          ${task.assignee},
-          ${task.dueDate},
-          ${task.priority},
-          ${task.status},
-          ${task.project},
-          ${sql.json(task.tags)},
-          ${task.estimate},
-          ${task.createdAt}
-        )
-        ON CONFLICT (id) DO NOTHING
-      `;
-    }
-  }
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)
+  `;
 
   isReady = true;
 }
 
-export async function listPostgresTasks(): Promise<Task[]> {
+export async function listPostgresTasks(userId: string): Promise<Task[]> {
   await ensureReady();
 
   const rows = await getSql()<PostgresTaskRow[]>`
-    SELECT * FROM tasks ORDER BY created_at DESC
+    SELECT * FROM tasks WHERE user_id = ${userId} ORDER BY created_at DESC
   `;
 
   return rows.map(rowToTask);
 }
 
-export async function createPostgresTask(input: Partial<TaskInput>): Promise<Task> {
+export async function createPostgresTask(
+  userId: string,
+  input: Partial<TaskInput>,
+  allowedProjects: string[]
+): Promise<Task> {
   await ensureReady();
 
   const task = {
-    ...normalizeTaskInput(input),
+    ...normalizeTaskInput(input, allowedProjects),
     id: `task-${crypto.randomUUID()}`,
     createdAt: new Date().toISOString()
   } satisfies Task;
@@ -109,7 +99,7 @@ export async function createPostgresTask(input: Partial<TaskInput>): Promise<Tas
   }
 
   await getSql()`
-    INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at)
+    INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at, user_id)
     VALUES (
       ${task.id},
       ${task.title},
@@ -121,18 +111,24 @@ export async function createPostgresTask(input: Partial<TaskInput>): Promise<Tas
       ${task.project},
       ${getSql().json(task.tags)},
       ${task.estimate},
-      ${task.createdAt}
+      ${task.createdAt},
+      ${userId}
     )
   `;
 
   return task;
 }
 
-export async function updatePostgresTask(id: string, input: Partial<TaskInput>): Promise<Task | null> {
+export async function updatePostgresTask(
+  userId: string,
+  id: string,
+  input: Partial<TaskInput>,
+  allowedProjects: string[]
+): Promise<Task | null> {
   await ensureReady();
 
   const existingRows = await getSql()<PostgresTaskRow[]>`
-    SELECT * FROM tasks WHERE id = ${id} LIMIT 1
+    SELECT * FROM tasks WHERE id = ${id} AND user_id = ${userId} LIMIT 1
   `;
   const existing = existingRows[0] ? rowToTask(existingRows[0]) : null;
 
@@ -142,7 +138,7 @@ export async function updatePostgresTask(id: string, input: Partial<TaskInput>):
 
   const task = {
     ...existing,
-    ...normalizeTaskInput({ ...existing, ...input }),
+    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects),
     id,
     createdAt: existing.createdAt
   } satisfies Task;
@@ -163,17 +159,17 @@ export async function updatePostgresTask(id: string, input: Partial<TaskInput>):
       project = ${task.project},
       tags = ${getSql().json(task.tags)},
       estimate = ${task.estimate}
-    WHERE id = ${id}
+    WHERE id = ${id} AND user_id = ${userId}
   `;
 
   return task;
 }
 
-export async function deletePostgresTask(id: string): Promise<boolean> {
+export async function deletePostgresTask(userId: string, id: string): Promise<boolean> {
   await ensureReady();
 
   const rows = await getSql()<PostgresTaskRow[]>`
-    DELETE FROM tasks WHERE id = ${id} RETURNING *
+    DELETE FROM tasks WHERE id = ${id} AND user_id = ${userId} RETURNING *
   `;
 
   return rows.length > 0;

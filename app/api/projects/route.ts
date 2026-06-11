@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "../../../lib/api-auth";
-import { createTask, listTasks } from "../../../lib/task-store-adapter";
+import { createProject, listProjects } from "../../../lib/project-store-adapter";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
     const userId = requireUserId(request);
-    return NextResponse.json({ tasks: await listTasks(userId) });
+    return NextResponse.json({ projects: await listProjects(userId) });
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error) }, { status: getStatus(error) });
   }
@@ -16,15 +16,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireUserId(request);
-    const task = await createTask(userId, await request.json());
-    return NextResponse.json({ task }, { status: 201 });
+    const project = await createProject(userId, await request.json());
+    return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error) }, { status: getStatus(error) });
   }
 }
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unable to save task.";
+  return error instanceof Error ? error.message : "Unable to save project.";
 }
 
 function getStatus(error: unknown) {

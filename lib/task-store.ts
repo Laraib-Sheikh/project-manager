@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { normalizeTaskInput, starterTasks, Task, TaskInput } from "./task-data";
+import { normalizeTaskInput, Task, TaskInput } from "./task-data";
 
 type TaskRow = {
   id: string;
@@ -15,6 +15,7 @@ type TaskRow = {
   tags: string;
   estimate: number;
   created_at: string;
+  user_id: string | null;
 };
 
 const dataDir = path.join(process.cwd(), "data");
@@ -41,54 +42,37 @@ function getDb() {
       project TEXT NOT NULL,
       tags TEXT NOT NULL DEFAULT '[]',
       estimate INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      user_id TEXT
     );
+    CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
   `);
-  seedTasks(database);
+  migrateTasksTable(database);
 
   return database;
 }
 
-function seedTasks(db: DatabaseSync) {
-  const count = db.prepare("SELECT COUNT(*) as count FROM tasks").get() as { count: number };
+function migrateTasksTable(db: DatabaseSync) {
+  const columns = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+  const hasUserId = columns.some((column) => column.name === "user_id");
 
-  if (count.count > 0) {
-    return;
-  }
-
-  const insert = db.prepare(`
-    INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  for (const task of starterTasks) {
-    insert.run(
-      task.id,
-      task.title,
-      task.description,
-      task.assignee,
-      task.dueDate,
-      task.priority,
-      task.status,
-      task.project,
-      JSON.stringify(task.tags),
-      task.estimate,
-      task.createdAt
-    );
+  if (!hasUserId) {
+    db.exec("ALTER TABLE tasks ADD COLUMN user_id TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)");
   }
 }
 
-export function listTasks(): Task[] {
+export function listTasks(userId: string): Task[] {
   const rows = getDb()
-    .prepare("SELECT * FROM tasks ORDER BY datetime(created_at) DESC")
-    .all() as TaskRow[];
+    .prepare("SELECT * FROM tasks WHERE user_id = ? ORDER BY datetime(created_at) DESC")
+    .all(userId) as TaskRow[];
 
   return rows.map(rowToTask);
 }
 
-export function createTask(input: Partial<TaskInput>): Task {
+export function createTask(userId: string, input: Partial<TaskInput>, allowedProjects: string[]): Task {
   const task = {
-    ...normalizeTaskInput(input),
+    ...normalizeTaskInput(input, allowedProjects),
     id: `task-${crypto.randomUUID()}`,
     createdAt: new Date().toISOString()
   } satisfies Task;
@@ -99,8 +83,8 @@ export function createTask(input: Partial<TaskInput>): Task {
 
   getDb()
     .prepare(
-      `INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO tasks (id, title, description, assignee, due_date, priority, status, project, tags, estimate, created_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       task.id,
@@ -113,14 +97,15 @@ export function createTask(input: Partial<TaskInput>): Task {
       task.project,
       JSON.stringify(task.tags),
       task.estimate,
-      task.createdAt
+      task.createdAt,
+      userId
     );
 
   return task;
 }
 
-export function updateTask(id: string, input: Partial<TaskInput>): Task | null {
-  const existing = getTask(id);
+export function updateTask(userId: string, id: string, input: Partial<TaskInput>, allowedProjects: string[]): Task | null {
+  const existing = getTaskForUser(userId, id);
 
   if (!existing) {
     return null;
@@ -128,7 +113,7 @@ export function updateTask(id: string, input: Partial<TaskInput>): Task | null {
 
   const task = {
     ...existing,
-    ...normalizeTaskInput({ ...existing, ...input }),
+    ...normalizeTaskInput({ ...existing, ...input }, allowedProjects),
     id,
     createdAt: existing.createdAt
   } satisfies Task;
@@ -141,7 +126,7 @@ export function updateTask(id: string, input: Partial<TaskInput>): Task | null {
     .prepare(
       `UPDATE tasks
        SET title = ?, description = ?, assignee = ?, due_date = ?, priority = ?, status = ?, project = ?, tags = ?, estimate = ?
-       WHERE id = ?`
+       WHERE id = ? AND user_id = ?`
     )
     .run(
       task.title,
@@ -153,19 +138,20 @@ export function updateTask(id: string, input: Partial<TaskInput>): Task | null {
       task.project,
       JSON.stringify(task.tags),
       task.estimate,
-      id
+      id,
+      userId
     );
 
   return task;
 }
 
-export function deleteTask(id: string): boolean {
-  const result = getDb().prepare("DELETE FROM tasks WHERE id = ?").run(id);
+export function deleteTask(userId: string, id: string): boolean {
+  const result = getDb().prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?").run(id, userId);
   return result.changes > 0;
 }
 
-function getTask(id: string): Task | null {
-  const row = getDb().prepare("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | undefined;
+function getTaskForUser(userId: string, id: string): Task | null {
+  const row = getDb().prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?").get(id, userId) as TaskRow | undefined;
   return row ? rowToTask(row) : null;
 }
 

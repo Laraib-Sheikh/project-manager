@@ -2,23 +2,25 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { assignees, priorities, Priority, projects, statuses, Status, Task } from "../lib/task-data";
+import { assignees, priorities, Priority, statuses, Status, Task } from "../lib/task-data";
+import { Project } from "../lib/project-data";
+import { getAuthHeaders, sessionKey, SessionUser } from "../lib/session";
 
 type ViewMode = "board" | "list";
 
-const sessionKey = "orbit-pm-session";
-
-const emptyDraft = {
-  title: "",
-  description: "",
-  assignee: assignees[0],
-  dueDate: "",
-  priority: "Normal" as Priority,
-  status: "To Do" as Status,
-  project: projects[0],
-  tags: "",
-  estimate: 2
-};
+function createEmptyDraft(projectName = "") {
+  return {
+    title: "",
+    description: "",
+    assignee: assignees[0],
+    dueDate: "",
+    priority: "Normal" as Priority,
+    status: "To Do" as Status,
+    project: projectName,
+    tags: "",
+    estimate: 2
+  };
+}
 
 const priorityRank: Record<Priority, number> = {
   Urgent: 4,
@@ -30,7 +32,8 @@ const priorityRank: Record<Priority, number> = {
 export default function Home() {
   const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [draft, setDraft] = useState(emptyDraft);
+  const [userProjects, setUserProjects] = useState<Project[]>([]);
+  const [draft, setDraft] = useState(createEmptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [projectFilter, setProjectFilter] = useState("All");
@@ -41,7 +44,7 @@ export default function Home() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
 
   useEffect(() => {
     const storedSession = window.localStorage.getItem(sessionKey);
@@ -52,26 +55,71 @@ export default function Home() {
     }
 
     try {
-      setCurrentUser(JSON.parse(storedSession) as { email: string; name: string });
+      const user = JSON.parse(storedSession) as SessionUser;
+
+      if (!user.id) {
+        window.localStorage.removeItem(sessionKey);
+        router.replace("/login");
+        return;
+      }
+
+      setCurrentUser(user);
       setIsCheckingAuth(false);
-      loadTasks();
+      void initializeWorkspace(user);
     } catch {
       window.localStorage.removeItem(sessionKey);
       router.replace("/login");
     }
   }, [router]);
 
+  const projectNames = useMemo(() => userProjects.map((project) => project.name), [userProjects]);
+
+  async function initializeWorkspace(user: SessionUser) {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const projectsResponse = await fetch("/api/projects", {
+        headers: getAuthHeaders(user)
+      });
+
+      if (!projectsResponse.ok) {
+        throw new Error("Unable to load your projects.");
+      }
+
+      const projectsData = (await projectsResponse.json()) as { projects: Project[] };
+
+      if (projectsData.projects.length === 0) {
+        router.replace("/onboard");
+        return;
+      }
+
+      setUserProjects(projectsData.projects);
+      setDraft(createEmptyDraft(projectsData.projects[0]?.name ?? ""));
+      await loadTasks(user);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      setIsLoading(false);
+    }
+  }
+
   function handleLogout() {
     window.localStorage.removeItem(sessionKey);
     router.replace("/login");
   }
 
-  async function loadTasks() {
+  async function loadTasks(user = currentUser) {
+    if (!user) {
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage("");
 
     try {
-      const response = await fetch("/api/tasks");
+      const response = await fetch("/api/tasks", {
+        headers: getAuthHeaders(user)
+      });
 
       if (!response.ok) {
         throw new Error("Unable to load tasks from the database.");
@@ -126,7 +174,7 @@ export default function Home() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!draft.title.trim()) {
+    if (!draft.title.trim() || !currentUser) {
       return;
     }
 
@@ -151,9 +199,7 @@ export default function Home() {
     try {
       const response = await fetch(editingId ? `/api/tasks/${editingId}` : "/api/tasks", {
         method: editingId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: getAuthHeaders(currentUser),
         body: JSON.stringify(payload)
       });
 
@@ -169,7 +215,7 @@ export default function Home() {
 
         return [data.task, ...current];
       });
-      setDraft(emptyDraft);
+      setDraft(createEmptyDraft(projectNames[0] ?? ""));
       setEditingId(null);
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
@@ -196,7 +242,7 @@ export default function Home() {
   async function updateStatus(taskId: string, status: Status) {
     const existing = tasks.find((task) => task.id === taskId);
 
-    if (!existing) {
+    if (!existing || !currentUser) {
       return;
     }
 
@@ -207,9 +253,7 @@ export default function Home() {
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: getAuthHeaders(currentUser),
         body: JSON.stringify({ ...existing, status })
       });
 
@@ -226,12 +270,19 @@ export default function Home() {
   }
 
   async function deleteTask(taskId: string) {
+    if (!currentUser) {
+      return;
+    }
+
     const previousTasks = tasks;
     setTasks((current) => current.filter((task) => task.id !== taskId));
     setErrorMessage("");
 
     try {
-      const response = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(currentUser)
+      });
 
       if (!response.ok) {
         throw new Error(await readApiError(response));
@@ -239,7 +290,7 @@ export default function Home() {
 
       if (editingId === taskId) {
         setEditingId(null);
-        setDraft(emptyDraft);
+        setDraft(createEmptyDraft(projectNames[0] ?? ""));
       }
     } catch (error) {
       setTasks(previousTasks);
@@ -291,8 +342,8 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Team workspace</p>
-            <h1>Project management dashboard</h1>
+            <p className="eyebrow">Your workspace</p>
+            <h1>{currentUser.name}&apos;s dashboard</h1>
           </div>
           <div className="actions">
             <button className={viewMode === "board" ? "activeButton" : ""} onClick={() => setViewMode("board")} type="button">
@@ -320,7 +371,7 @@ export default function Home() {
                 <h2>{editingId ? "Update task details" : "Add work to the plan"}</h2>
               </div>
               {editingId && (
-                <button className="ghostButton" onClick={() => { setEditingId(null); setDraft(emptyDraft); }} type="button">
+                <button className="ghostButton" onClick={() => { setEditingId(null); setDraft(createEmptyDraft(projectNames[0] ?? "")); }} type="button">
                   Cancel
                 </button>
               )}
@@ -374,7 +425,7 @@ export default function Home() {
               <label className="field">
                 Project
                 <select onChange={(event) => setDraft({ ...draft, project: event.target.value })} value={draft.project}>
-                  {projects.map((project) => (
+                  {projectNames.map((project) => (
                     <option key={project}>{project}</option>
                   ))}
                 </select>
@@ -413,7 +464,7 @@ export default function Home() {
           <input onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks, projects, tags..." value={query} />
           <select onChange={(event) => setProjectFilter(event.target.value)} value={projectFilter}>
             <option>All</option>
-            {projects.map((project) => (
+            {projectNames.map((project) => (
               <option key={project}>{project}</option>
             ))}
           </select>

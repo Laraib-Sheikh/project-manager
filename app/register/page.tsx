@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-const sessionKey = "orbit-pm-session";
+import { sessionKey } from "../../lib/session";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -38,9 +37,9 @@ export default function RegisterPage() {
         throw new Error(await readApiError(response));
       }
 
-      const data = (await response.json()) as { user: { email: string; name: string } };
+      const data = (await response.json()) as { user: { id: string; email: string; name: string } };
       window.localStorage.setItem(sessionKey, JSON.stringify(data.user));
-      router.replace("/");
+      router.replace("/onboard");
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
