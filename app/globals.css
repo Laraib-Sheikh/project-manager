@@ -103,6 +103,37 @@ button {
   padding: 16px;
 }
 
+.userPanel {
+  background: #172033;
+  border: 1px solid #344054;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.userPanel span {
+  color: #aeb8c8;
+  font-size: 13px;
+}
+
+.userPanel strong {
+  color: #ffffff;
+}
+
+.userPanel button {
+  background: #ffffff;
+  border: 0;
+  border-radius: 8px;
+  color: #111827;
+  font-weight: 800;
+  min-height: 38px;
+}
+
+.userPanel button:hover {
+  background: #dbeafe;
+}
+
 .sidebarPanel strong {
   display: block;
   font-size: 30px;
@@ -300,6 +331,66 @@ textarea:focus {
   background: #fff1f2;
   border-color: #fecdd3;
   color: var(--red);
+}
+
+.authShell,
+.authStatus {
+  display: grid;
+  min-height: 100vh;
+  padding: 24px;
+  place-items: center;
+}
+
+.authShell {
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(15, 118, 110, 0.12)),
+    var(--bg);
+}
+
+.authPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 24px;
+  max-width: 460px;
+  padding: 28px;
+  width: 100%;
+}
+
+.authBrand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.authBrand span:last-child {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.authForm {
+  display: grid;
+  gap: 14px;
+}
+
+.authSwitch {
+  color: var(--muted);
+  margin-bottom: 0;
+  text-align: center;
+}
+
+.authSwitch a {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.authSwitch a:hover {
+  text-decoration: underline;
 }
 
 .toolbar {

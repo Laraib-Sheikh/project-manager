@@ -1,9 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { assignees, priorities, Priority, projects, statuses, Status, Task } from "../lib/task-data";
 
 type ViewMode = "board" | "list";
+
+const sessionKey = "orbit-pm-session";
 
 const emptyDraft = {
   title: "",
@@ -25,6 +28,7 @@ const priorityRank: Record<Priority, number> = {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [draft, setDraft] = useState(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -34,12 +38,33 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<ViewMode>("board");
   const [sortMode, setSortMode] = useState("priority");
   const [isLoading, setIsLoading] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
 
   useEffect(() => {
-    loadTasks();
-  }, []);
+    const storedSession = window.localStorage.getItem(sessionKey);
+
+    if (!storedSession) {
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      setCurrentUser(JSON.parse(storedSession) as { email: string; name: string });
+      setIsCheckingAuth(false);
+      loadTasks();
+    } catch {
+      window.localStorage.removeItem(sessionKey);
+      router.replace("/login");
+    }
+  }, [router]);
+
+  function handleLogout() {
+    window.localStorage.removeItem(sessionKey);
+    router.replace("/login");
+  }
 
   async function loadTasks() {
     setIsLoading(true);
@@ -222,6 +247,14 @@ export default function Home() {
     }
   }
 
+  if (isCheckingAuth || !currentUser) {
+    return (
+      <main className="authStatus">
+        <div className="notice">Checking your workspace session...</div>
+      </main>
+    );
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -239,6 +272,12 @@ export default function Home() {
           <a href="#insights">Insights</a>
           <a href="#team">Team</a>
         </nav>
+
+        <div className="userPanel">
+          <span>Signed in as</span>
+          <strong>{currentUser.name}</strong>
+          <button onClick={handleLogout} type="button">Log out</button>
+        </div>
 
         <div className="sidebarPanel">
           <span>Workspace health</span>
