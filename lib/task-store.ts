@@ -193,3 +193,10 @@ function parseTags(value: string): string[] {
     return [];
   }
 }
+
+export const sqliteTaskStore = {
+  createTask,
+  deleteTask,
+  listTasks,
+  updateTask
+};

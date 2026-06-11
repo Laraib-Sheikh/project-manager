@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deleteTask, updateTask } from "../../../../lib/task-store";
+import { deleteTask, updateTask } from "../../../../lib/task-store-adapter";
 
 export const runtime = "nodejs";
 
@@ -7,7 +7,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   try {
-    const task = updateTask(id, await request.json());
+    const task = await updateTask(id, await request.json());
 
     if (!task) {
       return NextResponse.json({ message: "Task not found." }, { status: 404 });
@@ -22,7 +22,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (!deleteTask(id)) {
+  if (!(await deleteTask(id))) {
     return NextResponse.json({ message: "Task not found." }, { status: 404 });
   }
 
